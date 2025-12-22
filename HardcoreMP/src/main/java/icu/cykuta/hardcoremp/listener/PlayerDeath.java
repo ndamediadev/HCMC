@@ -1,0 +1,103 @@
+package icu.cykuta.hardcoremp.listener;
+
+import icu.cykuta.hardcoremp.HardcoreMP;
+import icu.cykuta.hardcoremp.config.LangManager;
+import icu.cykuta.hardcoremp.config.Setting;
+import icu.cykuta.hardcoremp.utils.Chat;
+import icu.cykuta.hardcoremp.utils.Massive;
+import icu.cykuta.hardcoremp.world.WorldCreationError;
+import icu.cykuta.hardcoremp.world.WorldManager;
+import icu.cykuta.hardcoremp.world.WorldStatus;
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+
+public class PlayerDeath implements Listener {
+
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        // Get the player who died
+        Player eventPlayer = event.getEntity();
+
+        // Check if player is in the bypass list
+        if (Setting.isPlayerInBypassList(eventPlayer)) {
+            LangManager.sendMessage(eventPlayer, "bypass");
+            return;
+        }
+
+        WorldManager worldManager = HardcoreMP.getWorldManager();
+
+        // check if players has lives left
+        if (worldManager.getLives() > 0) {
+            worldManager.removeLife();
+            Massive.title(
+                    LangManager.getLang("lives-left")
+                            .replace("{lives}", String.valueOf(worldManager.getLives()))
+                            .replace("{max-lives}", String.valueOf(worldManager.getDefaultLives())),
+                    LangManager.getLang("death-subtitle").replace("{player}", eventPlayer.getName())
+            );
+
+            return;
+        }
+
+        // Send title to all players
+        Massive.title(
+                LangManager.getLang("death-title"),
+                LangManager.getLang("death-subtitle").replace("{player}", eventPlayer.getName())
+        );
+
+        // Broadcast death message
+        Chat.broadcast("&c" + eventPlayer.getName() + " has died, world will reset shortly...");
+
+        // set default lives again
+        worldManager.resetLives();
+
+        // Clear inventory
+        Massive.clearInventory();
+
+        // Regen statistics
+        Massive.regenStats();
+
+        // Set all players gamemode to spectator
+        Massive.setGameMode(GameMode.SPECTATOR);
+
+        // If world is not ready, return
+        if (worldManager.getStatus() == WorldStatus.REGENERATING) {
+            return;
+        }
+
+        // Set the world status to regenerating
+        worldManager.setStatus(WorldStatus.REGENERATING);
+
+        // Schedule countdown and teleport
+        for (int i = 5; i >= 1; i--) {
+            final int count = i;
+            Bukkit.getScheduler().runTaskLater(HardcoreMP.getPlugin(), () -> {
+                Chat.broadcast(String.valueOf(count));
+            }, (6 - i) * 20L);
+        }
+
+        Bukkit.getScheduler().runTaskLater(HardcoreMP.getPlugin(), () -> {
+            // Teleport all players to lobby
+            World lobbyWorld = Bukkit.getWorld(worldManager.getLobbyWorldName());
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                player.teleport(lobbyWorld.getSpawnLocation());
+            }
+
+            // Regenerate the game world
+            try {
+                HardcoreMP.getWorldManager().regenGameWorld();
+            } catch (WorldCreationError e) {
+                HardcoreMP.disablePlugin(e.getMessage());
+                throw new RuntimeException(e);
+            }
+
+            // Set the world status to ready
+            worldManager.setStatus(WorldStatus.READY);
+        }, 6 * 20L);
+    }
+}

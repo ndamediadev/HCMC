@@ -1,0 +1,13 @@
+name: HardcoreMP
+version: '2.4-SNAPSHOT'
+main: icu.cykuta.hardcoremp.HardcoreMP
+api-version: '1.20'
+depend:
+  - Multiverse-Core
+commands:
+    hcmp:
+        description: HardcoreMP command
+        usage: /<command> [reload|help]
+        aliases: [hardcoremp, hmp]
+        permission: hardcoremp.command
+        permission-message: You do not have permission to use this command.
